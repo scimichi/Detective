@@ -76,11 +76,14 @@ const fish = {
     if (!res.ok) throw new Error(await describe(res))
     return Buffer.from(await res.arrayBuffer())
   },
-  async voices() {
-    const res = await fetch(
-      'https://api.fish.audio/model?page_size=30&page_number=1',
-      { headers: { authorization: `Bearer ${FISH}` } },
-    )
+  async voices(query) {
+    const url = new URL('https://api.fish.audio/model')
+    url.searchParams.set('page_size', '30')
+    url.searchParams.set('page_number', '1')
+    if (query) url.searchParams.set('title', query)
+    const res = await fetch(url, {
+      headers: { authorization: `Bearer ${FISH}` },
+    })
     if (!res.ok) throw new Error(await describe(res))
     const data = await res.json()
     return (data.items || data.data || []).map((m) => ({
@@ -115,7 +118,7 @@ const eleven = {
     if (!res.ok) throw new Error(await describe(res))
     return Buffer.from(await res.arrayBuffer())
   },
-  async voices() {
+  async voices(_query) {
     const res = await fetch('https://api.elevenlabs.io/v1/voices', {
       headers: { 'xi-api-key': ELEVEN },
     })
@@ -160,8 +163,13 @@ function looksLikeAudio(buf) {
 // ── Modes that don't render the whole archive ─────────────────────────────
 
 if (LIST) {
-  console.log(`narration: voices available on this ${provider.name} key\n`)
-  const list = await provider.voices()
+  // `npm run narration:voices -- narrator` searches instead of listing the
+  // most popular models, which are mostly game characters.
+  const query = process.argv.slice(2).find((a) => !a.startsWith('--')) || ''
+  console.log(
+    `narration: ${provider.name} voices${query ? ` matching "${query}"` : ''}\n`,
+  )
+  const list = await provider.voices(query)
   if (!list.length) console.log('  (none returned)')
   for (const v of list) {
     console.log(`  ${v.id}  ${v.title}${v.languages ? `  [${v.languages}]` : ''}`)
@@ -294,6 +302,16 @@ console.log(
     `${Object.keys(clips).length} in manifest`,
 )
 
-// A partial manifest is still useful — the page falls back per phrase, not
-// per tour — so this is only a hard failure if nothing at all came out.
-if (!Object.keys(clips).length) process.exit(1)
+// Deliberately always successful.
+//
+// Recorded narration is an enhancement on top of a site that already works:
+// every phrase without a clip falls back to the browser's voice by itself. A
+// provider outage, an expired card or an exhausted quota must not be able to
+// stop the board from deploying — it should cost the recorded voice and
+// nothing else.
+if (!Object.keys(clips).length) {
+  console.warn(
+    '\nnarration: nothing was rendered — the site will ship with the browser\n' +
+      '           voice instead. This is not a build failure.',
+  )
+}

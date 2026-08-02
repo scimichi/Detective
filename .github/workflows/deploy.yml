@@ -46,7 +46,11 @@ jobs:
 
       # Optional. With no key configured this step prints a line and exits
       # successfully, and the site uses the browser's own voice instead.
+      # Never allowed to fail the deploy. The board works without recorded
+      # narration; an outage or an exhausted quota should cost the voice and
+      # nothing more.
       - name: Render narration
+        continue-on-error: true
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           FISH_API_KEY: ${{ secrets.FISH_API_KEY }}

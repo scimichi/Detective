@@ -103,7 +103,17 @@ as a repository variable to choose the voice. Before committing to a full
 render, run the **Check narration key** workflow: it lists the voices the key
 can reach and renders a single line, uploading it as an artifact so the voice
 can actually be listened to. `npm run narration:voices` and
-`npm run narration:test` do the same thing locally. The workflow renders on every deploy,
+`npm run narration:test` do the same thing locally, and
+`npm run narration:voices -- narrator` searches the voice library by name
+rather than listing the most popular models.
+
+Rendering can never fail the build. A provider outage, an expired card or an
+exhausted quota costs the recorded voice and nothing else — every phrase
+without a clip falls back to the browser voice by itself.
+
+Fish keeps API credit separate from platform credit, so a working key can
+still return `402 Payment Required`; the balance lives at
+<https://fish.audio/app/developers>. The workflow renders on every deploy,
 but the output is cached by content, so only lines whose text has actually
 changed are re-rendered — and re-billed.
 
