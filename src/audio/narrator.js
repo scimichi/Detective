@@ -78,6 +78,7 @@ class Narrator {
     this.clips = null
     this.clipBase = ''
     this.audio = null
+    this.warmed = new Set()
 
     this.onChunk = null
     this.onDuck = null
@@ -253,6 +254,14 @@ class Narrator {
 
         this.onChunk?.(part.text)
 
+        // Pull the next clip down while this one is still talking. Fetched at
+        // the moment it is needed, every sentence would open with however long
+        // the network takes — and a narrator who pauses for breath between
+        // every single line is a narrator you stop believing in.
+        for (let j = i; j < Math.min(i + 2, parts.length); j++) {
+          if (parts[j].text) this.warm(this.clipFor(parts[j].text))
+        }
+
         const clip = this.clipFor(part.text)
         if (clip) return this.playClip(clip, part, step, token)
         if (this.canSpeak()) return this.speakPhrase(part, step, token)
@@ -292,6 +301,34 @@ class Narrator {
     if (!this.clips || !this.enabled) return null
     const file = this.clips[phraseKey(text)]
     return file ? this.clipBase + file : null
+  }
+
+  /**
+   * Puts a clip in the HTTP cache ahead of time.
+   *
+   * A plain fetch rather than a preloading Audio element: the element would
+   * have to be kept alive to keep its buffer, and a few hundred of those is a
+   * leak. The browser cache is the right place to hold this, and by the time
+   * `new Audio(url)` asks for it the answer is already local.
+   */
+  warm(url) {
+    if (!url || this.warmed.has(url)) return
+    this.warmed.add(url)
+    fetch(url, { cache: 'force-cache' }).catch(() => this.warmed.delete(url))
+  }
+
+  /**
+   * Warms the opening of a script that has not started yet.
+   *
+   * Lookahead inside a beat cannot help that beat's *first* line — nothing is
+   * playing yet to hide the fetch behind. The director calls this on the next
+   * beat while the current one is still talking, which is several seconds of
+   * cover for a file of a few tens of kilobytes.
+   */
+  warmScript(script, count = 3) {
+    if (!this.clips) return
+    const parts = this.phrase(script).filter((p) => p.text)
+    for (const p of parts.slice(0, count)) this.warm(this.clipFor(p.text))
   }
 
   // ── Tier one: a real recording ───────────────────────────────────────────

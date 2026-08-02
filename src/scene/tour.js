@@ -137,6 +137,11 @@ async function run(index, gen) {
   if (beat.lens) sweepBeam()
   else stopSweep()
 
+  // Fetch the start of the next beat while this one is being spoken, so the
+  // hand-over between beats doesn't open with a pause for the network.
+  const upcoming = state.beats[index + 1]
+  if (upcoming) narrator.warmScript(upcoming.say)
+
   await narrator.speak(beat.say)
   if (gen !== state.gen) return
 
@@ -237,7 +242,12 @@ export function wireNarrator() {
   fetch(`${base}narration/manifest.json`, { cache: 'no-cache' })
     .then((r) => (r.ok ? r.json() : null))
     .then((m) => {
-      if (m?.clips) narrator.setClips(m, `${base}narration/`)
+      if (!m?.clips) return
+      narrator.setClips(m, `${base}narration/`)
+      // The opening line is the one nobody can hide a fetch behind, so start
+      // it now — this runs on the click that enters the site, and the archive
+      // tour does not speak for another second and a half.
+      narrator.warmScript(ARCHIVE_TOUR[0].say, 4)
     })
     .catch(() => {})
   narrator.onChunk = (text) => S().setCaption(text || '')
