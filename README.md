@@ -113,9 +113,31 @@ without a clip falls back to the browser voice by itself.
 
 Fish keeps API credit separate from platform credit, so a working key can
 still return `402 Payment Required`; the balance lives at
-<https://fish.audio/app/developers>. The workflow renders on every deploy,
-but the output is cached by content, so only lines whose text has actually
-changed are re-rendered — and re-billed.
+<https://fish.audio/app/developers>.
+
+**Deploying does not render.** An ordinary push takes the clips from the cache
+and calls nothing, because a deploy is not a request to spend money. Rendering
+happens only when it is asked for:
+
+- tick **Re-render narration** on a manual run of the deploy workflow, or
+- set the repository variable `NARRATION_RENDER` to `1` while working through
+  a batch of script changes, and clear it afterwards.
+
+Ask for one after editing `tours.js` or changing `NARRATION_VOICE`; nothing
+else needs one. Every build reports how many clips it shipped as a notice on
+the run summary, and warns if it shipped none — silence is the failure mode
+here, and silence is what nobody notices in CI.
+
+Two things about the cache are worth knowing, because both have already gone
+wrong once. Its key carries the run id: GitHub cache entries are immutable, so
+a run that hits its own primary key silently declines to save, and a key first
+claimed by an empty result stays empty forever while every later run re-renders
+at full price. And GitHub evicts entries untouched for seven days — after a
+long quiet period the clips are gone, the next deploy will warn that it shipped
+none, and getting them back means asking for a render. If that becomes
+annoying, commit `public/narration/` to the repository instead: the clips are
+immutable and about 15 MB, and holding them in git removes both the cache and
+the API from the deploy path entirely.
 
 The whole archive is **341 phrases, about 16,200 characters**. Clips are keyed
 by a hash of the line rather than by position, so reordering a tour costs

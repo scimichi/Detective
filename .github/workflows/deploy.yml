@@ -7,6 +7,11 @@ on:
       # So the board can be seen live before anything is merged.
       - 'claude/**'
   workflow_dispatch:
+    inputs:
+      render_narration:
+        description: 'Re-render narration (COSTS MONEY — only when the script or voice changed)'
+        type: boolean
+        default: false
 
 # The deploy job needs to mint an ID token for the Pages deployment and write
 # to the Pages environment; nothing else needs any write access at all.
@@ -54,26 +59,53 @@ jobs:
       # shape for a cache that accumulates rather than one keyed to an exact
       # input.
       - name: Restore rendered narration
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: public/narration
-          key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-${{ github.run_id }}
+          key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-
           restore-keys: |
             narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-
             narration-${{ hashFiles('src/data/tours.js') }}-
 
-      # Optional. With no key configured this step prints a line and exits
-      # successfully, and the site uses the browser's own voice instead.
-      # Never allowed to fail the deploy. The board works without recorded
-      # narration; an outage or an exhausted quota should cost the voice and
-      # nothing more.
+      # Rendering calls a paid API, and a deploy is not a request to spend
+      # money. Every ordinary push takes the clips from the cache and costs
+      # nothing; this step only runs when somebody has actually asked for it,
+      # either by ticking the box on a manual run or by setting the repository
+      # variable while a batch of script changes is being worked through.
+      #
+      # Kept as continue-on-error regardless: the board works without recorded
+      # narration — every phrase without a clip falls back to the browser voice
+      # on its own — so an outage or an exhausted quota should cost the voice
+      # and nothing more.
       - name: Render narration
+        if: github.event.inputs.render_narration == 'true' || vars.NARRATION_RENDER == '1'
         continue-on-error: true
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
           NARRATION_VOICE: ${{ vars.NARRATION_VOICE }}
         run: node scripts/render-narration.mjs
+
+      # Only after a render that actually happened. A save on every deploy
+      # would pile up a fresh copy of fifteen megabytes per push for no reason.
+      - name: Save rendered narration
+        if: github.event.inputs.render_narration == 'true' || vars.NARRATION_RENDER == '1'
+        uses: actions/cache/save@v4
+        with:
+          path: public/narration
+          key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-${{ github.run_id }}
+
+      # Says out loud what the visitor will actually get, on the run summary
+      # rather than buried in a log. Silence is the failure mode here, and
+      # silence is exactly what nobody notices in CI.
+      - name: Narration status
+        run: |
+          n=$(ls public/narration/*.mp3 2>/dev/null | wc -l)
+          if [ "$n" -gt 0 ]; then
+            echo "::notice title=Narration::$n recorded clips in this build."
+          else
+            echo "::warning title=No recorded narration::This build ships no recorded narration — the tour will use the browser's own voice. Nothing was restored from the cache and no render was requested."
+          fi
 
       - name: Build
         env:
