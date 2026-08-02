@@ -21,6 +21,7 @@ class Soundscape {
     this.timers = []
     this.muted = false
     this.ducked = false
+    this.place = 'void'
     this.listener = new THREE.Vector3()
   }
 
@@ -37,10 +38,40 @@ class Soundscape {
     this.master.connect(this.ctx.destination)
     this.master.gain.exponentialRampToValueAtTime(0.55, this.ctx.currentTime + 4)
 
+    // Everything that belongs to a *room* — the lamp's ballast, the clock, the
+    // floor, paper moving on cork — hangs off this. The opening is not a room:
+    // it is six cards adrift in the dark, and a ticking clock in that space is
+    // a sound with nothing making it. So the room fades up when you go inside
+    // a board and fades away again when you leave.
+    this.roomGain = this.ctx.createGain()
+    // From `place`, not from zero: the phase can — and on a slow machine does
+    // — change before the audio context finishes opening, and those calls
+    // found nothing to set. Starting at a hardcoded zero would leave the room
+    // permanently silent for exactly the people whose machines were slowest.
+    this.roomGain.gain.value = this.place === 'board' ? 1 : 0
+    this.roomGain.connect(this.master)
+
     this.noiseBuffer = this.makeNoise(3)
     this.buildRain()
     this.buildRoomTone()
     this.scheduleAll()
+  }
+
+  /**
+   * 'void' — the archive of drifting cards. 'board' — inside a case.
+   *
+   * Weather carries across both, because rain is outside the building either
+   * way. The room does not.
+   */
+  setPlace(place) {
+    if (this.place === place) return
+    this.place = place
+    if (!this.roomGain) return
+    this.roomGain.gain.setTargetAtTime(
+      place === 'board' ? 1 : 0,
+      this.ctx.currentTime,
+      place === 'board' ? 1.6 : 0.9,
+    )
   }
 
   /**
@@ -80,50 +111,68 @@ class Soundscape {
   // ── Continuous beds ──────────────────────────────────────────────────────
 
   /**
-   * Rain, built from droplets rather than from noise.
+   * Rain.
    *
-   * Filtered white noise is the obvious way to do this and it is wrong: a
-   * wide band of broadband noise is, by definition, hiss. What makes rain
-   * sound like rain is that it is thousands of *separate transients* — each
-   * droplet a short resonant tick with its own pitch and decay — laid over a
-   * quiet low wash. So the buffer is filled with actual droplets.
+   * Two things make synthesised rain come out as static, and the first version
+   * of this did both.
    *
-   * The texture is then played back twice at slightly different rates, half a
+   * The first is broadband noise. A wide band of it *is* hiss — that is the
+   * definition — so the drops here are discrete resonant events and the bed
+   * underneath them is filtered down to a rumble, with nothing left above
+   * about a kilohertz. Hiss needs high-frequency energy; there is none to
+   * have.
+   *
+   * The second is density, which is the subtler mistake. Individual droplets
+   * are the right idea, but the ear stops resolving separate events somewhere
+   * around a hundred a second — past that they fuse, and thousands of
+   * perfectly good little transients per second reassemble themselves into
+   * exactly the noise they were supposed to replace. So this is about seventy
+   * drops a second, each one audible as itself.
+   *
+   * The texture is played back twice at slightly different rates, half a
    * buffer apart, with slow independent gain drift. The two copies beat
    * against each other, so the seam never lands in the same place and there is
    * no loop point to hear.
    */
   buildRain() {
     const sr = this.ctx.sampleRate
-    const seconds = 6
+    const seconds = 8
     const len = Math.floor(sr * seconds)
     const buf = this.ctx.createBuffer(1, len, sr)
     const d = buf.getChannelData(0)
 
-    // A quiet low wash: distant rain with no individual drops audible.
-    let lp = 0
+    // The wash: rain on the street below, heard through a closed window. Two
+    // cascaded one-pole filters rather than one, because a single pole leaves
+    // audible fizz on top of the rumble.
+    // Kept deliberately thin. A loud bed swallows the drops, and rain whose
+    // drops you cannot pick out individually is, again, just noise.
+    let a = 0
+    let b = 0
     for (let i = 0; i < len; i++) {
-      lp += (Math.random() * 2 - 1 - lp) * 0.02
-      d[i] = lp * 0.5
+      a += (Math.random() * 2 - 1 - a) * 0.006
+      b += (a - b) * 0.006
+      d[i] = b * 0.9
     }
 
-    // Droplets. A decaying sine at a few kilohertz with a noisy attack is a
-    // convincing tick; scatter enough of them and the ear hears rainfall.
-    const drops = Math.floor(seconds * 1200)
+    // Drops on the glass. Water on a hard surface is a dull resonant knock a
+    // few hundred hertz up, not a ping — and it has an onset, however short.
+    // An instantaneous one is a click, which reads as a fault.
+    const drops = Math.floor(seconds * 70)
     for (let n = 0; n < drops; n++) {
       const at = Math.floor(Math.random() * len)
-      // Nearby drops are brighter and louder than distant ones.
-      const near = Math.pow(Math.random(), 2.2)
-      const freq = 900 + Math.random() * 5200 * (0.4 + near)
-      const decay = (0.0012 + Math.random() * 0.011) * (0.5 + near)
-      const amp = (0.006 + Math.random() * 0.05) * near
-      const dur = Math.min(Math.floor(decay * 5 * sr), len - at)
+      // Cubed, so a handful of drops are close and most are not.
+      const near = Math.pow(Math.random(), 3)
+      const freq = 150 + Math.random() * 480 + near * 700
+      const decay = 0.006 + Math.random() * 0.03 + near * 0.02
+      const amp = (0.06 + near * 0.55) * 0.16
+      const dur = Math.min(Math.floor(decay * 4 * sr), len - at)
       const w = (2 * Math.PI * freq) / sr
+      // A second partial, so it isn't a sine bleep.
+      const w2 = w * (2.6 + Math.random())
       for (let i = 0; i < dur; i++) {
         const env = Math.exp(-i / (decay * sr))
-        // The first instant is a noise burst — the splash before the ring.
-        const body = i < 24 ? Math.random() * 2 - 1 : Math.sin(w * i)
-        d[at + i] += body * env * amp
+        const onset = Math.min(1, i / 14)
+        d[at + i] += (Math.sin(w * i) + Math.sin(w2 * i) * 0.3) * env * onset * amp
       }
     }
 
@@ -135,14 +184,15 @@ class Soundscape {
     const gain = this.ctx.createGain()
     gain.gain.value = 0.05
 
-    // Rain heard from indoors has lost its top end to the glass.
+    // Everything above a kilohertz has already been taken by the distance and
+    // the glass. This is the filter that guarantees it cannot hiss.
     const lpf = this.ctx.createBiquadFilter()
     lpf.type = 'lowpass'
-    lpf.frequency.value = 2600
+    lpf.frequency.value = 1100
     lpf.Q.value = 0.4
     const hpf = this.ctx.createBiquadFilter()
     hpf.type = 'highpass'
-    hpf.frequency.value = 180
+    hpf.frequency.value = 90
 
     for (const [rate, offset, level] of [
       [1.0, 0, 1],
@@ -199,7 +249,7 @@ class Soundscape {
     const lp = this.ctx.createBiquadFilter()
     lp.type = 'lowpass'
     lp.frequency.value = 900
-    gain.connect(lp).connect(panner).connect(this.master)
+    gain.connect(lp).connect(panner).connect(this.roomGain)
     this.lampGain = gain
   }
 
@@ -209,8 +259,12 @@ class Soundscape {
     this.every(0.98, 1.02, () => this.clockTick())
     this.every(9, 26, () => this.floorCreak())
     this.every(34, 96, () => this.thunder())
-    this.every(14, 44, () => this.radioBurst())
     this.every(21, 60, () => this.paperShift())
+    // There used to be a fifth voice here: a "distant radio", built as
+    // band-passed noise with a square-wave gate on it to suggest speech. On
+    // paper it was atmosphere. In a quiet room, on a screen where nothing else
+    // was making a sound, it was a burst of static every twenty seconds — and
+    // it read, correctly, as something being broken. Cut.
   }
 
   every(min, max, fn) {
@@ -252,7 +306,7 @@ class Soundscape {
 
     const g = this.ctx.createGain()
     this.env(g, t, 0.001, tock ? 0.05 : 0.035, 0.05)
-    src.connect(bp).connect(g).connect(this.master)
+    src.connect(bp).connect(g).connect(this.roomGain)
     src.start(t)
     src.stop(t + 0.12)
   }
@@ -272,7 +326,7 @@ class Soundscape {
 
     const g = this.ctx.createGain()
     this.env(g, t, 0.09, 0.7, 0.035)
-    osc.connect(lp).connect(g).connect(this.master)
+    osc.connect(lp).connect(g).connect(this.roomGain)
     osc.start(t)
     osc.stop(t + 1.0)
   }
@@ -295,47 +349,17 @@ class Soundscape {
     src.stop(t + 4.4)
   }
 
-  radioBurst() {
-    const t = this.ctx.currentTime
-    const bursts = 2 + Math.floor(Math.random() * 4)
-    for (let i = 0; i < bursts; i++) {
-      const at = t + i * (0.28 + Math.random() * 0.5)
-      const src = this.ctx.createBufferSource()
-      src.buffer = this.noiseBuffer
-      src.playbackRate.value = 0.9 + Math.random() * 0.6
-
-      // Comms-band voice: narrow, harsh, unintelligible on purpose.
-      const bp = this.ctx.createBiquadFilter()
-      bp.type = 'bandpass'
-      bp.frequency.value = 900 + Math.random() * 900
-      bp.Q.value = 4.5
-
-      const g = this.ctx.createGain()
-      const dur = 0.12 + Math.random() * 0.5
-      this.env(g, at, 0.02, dur, 0.03)
-
-      // Syllable gating gives it the cadence of speech.
-      const gate = this.ctx.createOscillator()
-      gate.type = 'square'
-      gate.frequency.value = 5 + Math.random() * 7
-      const gateAmt = this.ctx.createGain()
-      gateAmt.gain.value = 0.012
-      gate.connect(gateAmt).connect(g.gain)
-      gate.start(at)
-      gate.stop(at + dur + 0.1)
-
-      src.connect(bp).connect(g).connect(this.master)
-      src.start(at)
-      src.stop(at + dur + 0.1)
-    }
-  }
-
   paperShift() {
-    this.rustle(0.018)
+    // Ambient: paper settling on a board nobody is touching. Belongs to the
+    // room, and so is silent when there isn't one.
+    this.rustle(0.018, true)
   }
 
-  /** A sheet moving. Also fired when you pin your attention to something. */
-  rustle(level = 0.05) {
+  /**
+   * A sheet moving. Also fired when you pull a file or scrub the year — those
+   * are sounds your own hand is making, so they play wherever you are.
+   */
+  rustle(level = 0.05, ambient = false) {
     if (!this.started) return
     const t = this.ctx.currentTime
     const src = this.ctx.createBufferSource()
@@ -359,7 +383,7 @@ class Soundscape {
     flutter.start(t)
     flutter.stop(t + dur + 0.1)
 
-    src.connect(hp).connect(g).connect(this.master)
+    src.connect(hp).connect(g).connect(ambient ? this.roomGain : this.master)
     src.start(t)
     src.stop(t + dur + 0.1)
   }

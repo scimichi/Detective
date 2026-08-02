@@ -65,6 +65,11 @@ class Narrator {
     this.voicesReady = false
     this.primed = false
 
+    /** Set once the engine has proved it accepts utterances without speaking
+     *  them, so the tour stops paying 1.4s a phrase to rediscover that. */
+    this.speechBroken = false
+    this.silentStrikes = 0
+
     /** Utterances in flight. Dropping the reference lets the engine collect
      *  them mid-sentence, which is a real and very confusing bug. */
     this.live = new Set()
@@ -96,6 +101,10 @@ class Narrator {
       if (!this.voices.length) this.voices = all
       if (!this.voice && this.voices.length) this.voice = this.voices[0]
       this.voicesReady = true
+      // Voices arriving is new evidence: an engine that was mute a moment ago
+      // may simply not have been loaded yet. Give it another chance.
+      this.speechBroken = false
+      this.silentStrikes = 0
       this.onVoices?.()
     }
     load()
@@ -146,11 +155,20 @@ class Narrator {
     this.rate = rate
   }
 
-  /** Adopts a manifest of pre-rendered narration, if the build made one. */
+  /**
+   * Adopts a manifest of pre-rendered narration, if the build made one.
+   *
+   * An empty manifest is written on every build, including builds with no
+   * text-to-speech key at all — so the count matters, not the presence of the
+   * file. Claiming a recorded voice while actually running the browser's is
+   * the one thing this whole tier is supposed to prevent.
+   */
   setClips(manifest, base) {
-    this.clips = manifest?.clips || null
+    const clips = manifest?.clips
+    if (!clips || !Object.keys(clips).length) return
+    this.clips = clips
     this.clipBase = base || ''
-    if (this.clips) this.setStatus('clips')
+    this.setStatus('clips')
   }
 
   setStatus(mode) {
@@ -250,8 +268,24 @@ class Narrator {
     })
   }
 
+  /**
+   * Note what this does *not* require: a resolved voice.
+   *
+   * This was the bug behind "I hear the narration inside a case but not in the
+   * archive". Chrome populates getVoices() asynchronously, and the archive
+   * tour starts about a second and a half after the click that opens the site
+   * — often before the list has arrived. With no voice chosen the tour fell
+   * straight through to silent captions, and stayed there for the whole
+   * opening. By the time a case was picked, thirty seconds later, the list had
+   * long since loaded and every case tour spoke perfectly. Same code, same
+   * machine, entirely different outcome, purely on timing.
+   *
+   * An utterance with no `voice` set is perfectly legal — the engine uses its
+   * own default. Choosing a better one is an improvement, not a precondition,
+   * and it must never be the difference between speaking and not.
+   */
   canSpeak() {
-    return this.supported && this.enabled && !!this.voice
+    return this.supported && this.enabled && !this.speechBroken
   }
 
   clipFor(text) {
@@ -292,8 +326,15 @@ class Narrator {
 
   speakPhrase(part, next, token) {
     const u = new SpeechSynthesisUtterance(part.text)
-    u.voice = this.voice
-    u.lang = this.voice.lang
+    // Left unset when the list hasn't arrived: the engine falls back to its
+    // own default rather than to silence, and the phrase after this one will
+    // pick up the good voice as soon as there is one.
+    if (this.voice) {
+      u.voice = this.voice
+      u.lang = this.voice.lang
+    } else {
+      u.lang = 'en-GB'
+    }
     u.rate = this.rate * (part.slow ? 0.9 : 1)
     u.pitch = this.pitch
     u.volume = 1
@@ -313,6 +354,7 @@ class Narrator {
 
     u.onstart = () => {
       started = true
+      this.silentStrikes = 0
       this.setStatus('speech')
     }
     u.onend = advance
@@ -325,6 +367,10 @@ class Narrator {
       1400,
       () => {
         if (started || advanced) return
+        // Twice is a pattern, not a hiccup. Machines with no working speech
+        // engine would otherwise pay this wait on every phrase of every tour,
+        // adding a second and a half of dead air before each caption.
+        if (++this.silentStrikes >= 2) this.speechBroken = true
         this.setStatus('captions')
         const words = part.text.split(/\s+/).length
         this.wait(Math.max(900, (words / 2.58) * 1000), advance, token)

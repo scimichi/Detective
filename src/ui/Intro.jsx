@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../state/store.js'
 import { audio } from '../audio/soundscape.js'
@@ -16,6 +17,14 @@ export default function Intro() {
   const phase = useStore((s) => s.phase)
   const begin = useStore((s) => s.beginJourney)
   const setGuided = useStore((s) => s.setGuided)
+
+  // Start the voice list loading now, while there is still a homepage to read.
+  // It arrives asynchronously and the first narrated line is only a second or
+  // so after the click — waiting until the click to ask for it is how the
+  // opening ended up running silent.
+  useEffect(() => {
+    narrator.init()
+  }, [])
 
   const enter = (guided) => {
     // The room can only make noise after a gesture, and so can the narrator —

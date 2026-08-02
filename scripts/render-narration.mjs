@@ -230,8 +230,35 @@ if (TEST) {
 // Anything already on disk from a previous run — or restored from the CI
 // cache — is left alone. This is what keeps a redeploy from re-billing the
 // entire archive.
+//
+// Except when the voice has changed. A clip's filename is a hash of the words
+// in it, because that is the identity the browser looks it up by — which means
+// the same sentence read by a different narrator lands on the same filename.
+// Left alone, that would make a voice change appear to succeed and silently
+// serve the old voice forever. So the manifest records which voice its files
+// were made with, and a mismatch invalidates the lot.
+const stamp = `${provider.name}:${provider.voice || '(default)'}`
+let previous = null
+try {
+  previous = JSON.parse(await readFile(resolve(OUT, 'manifest.json'), 'utf8'))
+} catch {
+  /* first run, or nothing cached */
+}
+const priorStamp = previous
+  ? `${previous.provider}:${previous.voice || '(default)'}`
+  : null
+const reusable = !priorStamp || priorStamp === stamp
+
+if (!reusable) {
+  console.log(
+    `narration: voice changed (${priorStamp} → ${stamp}) — re-rendering everything.`,
+  )
+}
+
 const existing = new Set(
-  existsSync(OUT) ? (await readdir(OUT)).filter((f) => f.endsWith('.mp3')) : [],
+  reusable && existsSync(OUT)
+    ? (await readdir(OUT)).filter((f) => f.endsWith('.mp3'))
+    : [],
 )
 
 // ── Render ────────────────────────────────────────────────────────────────

@@ -55,6 +55,12 @@ export default function HUD() {
     audio.setMuted(!audioOn)
   }, [audioOn])
 
+  // The room belongs to the board. Out in the archive there is no lamp to hum,
+  // no clock to tick and no floor to creak — only the weather.
+  useEffect(() => {
+    audio.setPlace(phase === 'board' ? 'board' : 'void')
+  }, [phase])
+
   const kinds = data ? Object.keys(data.counts) : []
   const [lo, hi] = data?.yearRange || [1900, 2024]
   const pct = ((year - lo) / Math.max(1, hi - lo)) * 100

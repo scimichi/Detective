@@ -11,6 +11,10 @@ on:
         description: 'Voice / reference id to test (blank = provider default)'
         required: false
         default: ''
+      search:
+        description: 'Search the voice catalogue for this word (blank = most popular)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -30,7 +34,10 @@ jobs:
         env:
           FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-        run: npm run narration:voices
+          # Via the environment rather than interpolated into the command, so
+          # the search term stays a search term and cannot become shell.
+          SEARCH: ${{ github.event.inputs.search }}
+        run: npm run narration:voices -- "$SEARCH"
 
       - name: Render one line
         env:

@@ -247,6 +247,10 @@ export function wireNarrator() {
     const saved = S().voiceURI
     if (saved) narrator.setVoice(saved)
   }
+  // The list may already have arrived — init() runs on the homepage, long
+  // before this. Without this the panel would sit on "no voices reported yet"
+  // for a session where the voices had in fact loaded first.
+  if (narrator.voicesReady) narrator.onVoices()
   // Adopt whatever the viewer has already chosen in this session.
   narrator.setRate(S().voiceRate)
   narrator.enabled = S().narrationOn

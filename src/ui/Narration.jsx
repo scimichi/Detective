@@ -148,7 +148,14 @@ export function VoicePanel({ onClose }) {
   const setRate = useStore((s) => s.setVoiceRate)
   const narrationOn = useStore((s) => s.narrationOn)
   const setNarration = useStore((s) => s.setNarration)
+  const mode = useStore((s) => s.speechMode)
   useStore((s) => s.voiceTick) // re-render when the voice list arrives
+
+  // When there is a recorded voice, the browser's own voices are a spare tyre.
+  // Putting a list of them front and centre invites someone to go shopping
+  // through a set of options that are all worse than what is already playing.
+  const [showFallback, setShowFallback] = useState(false)
+  const recorded = mode === 'clips'
 
   useEffect(() => {
     narrator.enabled = narrationOn
@@ -177,11 +184,19 @@ export function VoicePanel({ onClose }) {
         </p>
       )}
 
-      {narrator.supported && (
+      {narrator.supported && recorded && !showFallback && (
+        <button className="vp-more" onClick={() => setShowFallback(true)}>
+          Browser voices (fallback) →
+        </button>
+      )}
+
+      {narrator.supported && (!recorded || showFallback) && (
         <>
           <p className="vp-note">
             These are the voices installed on your machine — the page can't
-            download one. The best ones are at the top. Click to hear it.
+            download one, so if they all sound mechanical, that is your
+            operating system rather than this site. The best ones are at the
+            top. Click to hear it.
           </p>
 
           <div className="vp-list">
@@ -202,7 +217,11 @@ export function VoicePanel({ onClose }) {
               <p className="vp-note">No voices reported yet — try again in a moment.</p>
             )}
           </div>
+        </>
+      )}
 
+      {narrator.supported && (
+        <>
           <label className="vp-row">
             <span>Pace</span>
             <input
