@@ -58,14 +58,24 @@ jobs:
       # below then find the newest previous one by prefix. This is the standard
       # shape for a cache that accumulates rather than one keyed to an exact
       # input.
+      # One restore key, deliberately.
+      #
+      # There used to be a second, broader fallback here — the bare
+      # `narration-<hash>-` — and it did active harm. The very first deploy,
+      # made before the account had any credit, saved an empty result under
+      # exactly that name. The broader key then matched that 331-byte entry in
+      # preference to the full fifteen megabytes sitting under the narrower
+      # one, and the build shipped a manifest listing no clips at all. A
+      # fallback that can resolve to a known-empty result is worse than no
+      # fallback: shipping nothing while reporting success is the failure this
+      # whole path keeps finding new ways to produce.
       - name: Restore rendered narration
+        id: narration_cache
         uses: actions/cache/restore@v4
         with:
           path: public/narration
           key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-
-          restore-keys: |
-            narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-
-            narration-${{ hashFiles('src/data/tours.js') }}-
+          restore-keys: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-
 
       # Rendering calls a paid API, and a deploy is not a request to spend
       # money. Every ordinary push takes the clips from the cache and costs
@@ -101,10 +111,15 @@ jobs:
       - name: Narration status
         run: |
           n=$(ls public/narration/*.mp3 2>/dev/null | wc -l)
+          echo "cache matched: '${{ steps.narration_cache.outputs.cache-matched-key }}'"
           if [ "$n" -gt 0 ]; then
             echo "::notice title=Narration::$n recorded clips in this build."
           else
             echo "::warning title=No recorded narration::This build ships no recorded narration — the tour will use the browser's own voice. Nothing was restored from the cache and no render was requested."
+            # A manifest with no clips is worse than no manifest: the page would
+            # fetch it, find it empty, and the only difference from a working
+            # build would be silence. Remove it and let the fallback be clean.
+            rm -f public/narration/manifest.json
           fi
 
       - name: Build
