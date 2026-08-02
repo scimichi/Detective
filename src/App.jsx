@@ -7,9 +7,11 @@ import HUD from './ui/HUD.jsx'
 import Inspector from './ui/Inspector.jsx'
 import TimelinePanel from './ui/TimelinePanel.jsx'
 import SearchPanel from './ui/SearchPanel.jsx'
+import Narration from './ui/Narration.jsx'
 import { useStore } from './state/store.js'
 import { nav, flyTo } from './scene/nav.js'
 import { audio } from './audio/soundscape.js'
+import { toggleTourPause, nextBeat, stopTour, wireNarrator } from './scene/tour.js'
 
 export default function App() {
   const quality = useStore((s) => s.quality)
@@ -27,9 +29,16 @@ export default function App() {
       const st = s()
       switch (e.key) {
         case ' ':
-          if (st.phase === 'board') {
+          e.preventDefault()
+          // While the narrator is running, the spacebar means what it means
+          // everywhere else something is playing.
+          if (st.tourActive) toggleTourPause()
+          else if (st.phase === 'board') st.toggleGraph()
+          break
+        case 'ArrowRight':
+          if (st.tourActive) {
             e.preventDefault()
-            st.toggleGraph()
+            nextBeat()
           }
           break
         case 't':
@@ -53,7 +62,8 @@ export default function App() {
           break
         case 'Escape':
           // Back out one layer at a time, in the order they were entered.
-          if (st.helpOpen) st.toggleHelp()
+          if (st.tourActive) stopTour()
+          else if (st.helpOpen) st.toggleHelp()
           else if (st.searchOpen) st.toggleSearch()
           else if (st.timelineOpen) st.toggleTimeline()
           else if (st.lens !== 'none') st.setLens(st.lens)
@@ -84,6 +94,7 @@ export default function App() {
   // make noise. Arm the soundscape on whatever the first interaction is.
   useEffect(() => {
     const arm = () => {
+      wireNarrator()
       if (useStore.getState().audioOn) audio.start()
       window.removeEventListener('pointerdown', arm)
       window.removeEventListener('keydown', arm)
@@ -134,6 +145,7 @@ export default function App() {
         <Inspector />
         <TimelinePanel />
         <SearchPanel />
+        <Narration />
       </div>
     </>
   )

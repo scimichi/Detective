@@ -17,6 +17,49 @@ Dyatlov Pass, and Whitechapel 1888.
 
 ---
 
+## Two ways in
+
+The homepage offers a choice, because the hardest problem with a room like
+this is not knowing where to stand in it.
+
+**Take me through it** hands the whole instrument to a narrator. It flies the
+camera between exhibits, scrubs the year, lifts the board into a relationship
+graph, switches on an ultraviolet lamp and sweeps the beam across the page for
+you. Roughly twelve minutes a case. Pause at any point and you have the
+controls; move the mouse yourself and it pauses automatically rather than
+fighting you for the camera.
+
+**Let me look around** is the unguided version, with one difference from
+before: on arrival it names a specific document worth opening first, and gets
+out of the way as soon as you move.
+
+You can switch between them at any time — `▶ Talk me through this case` sits at
+the top of the tool rail.
+
+### About the voice
+
+There is no network and there are no audio assets, so the only speech
+available is whatever the machine already has installed. That is a real
+constraint and the tour is built around it:
+
+- **Voices are ranked, not defaulted.** Modern platforms ship neural voices
+  alongside the old formant ones, and the good ones are never first in the
+  list. `src/audio/narrator.js` scores them — Microsoft's *Natural* family,
+  Apple's *Premium* and *Siri* voices, the known-good platform names — and
+  drops eSpeak and the novelty voices to the bottom. **Voice** in the
+  transport opens the picker; click any entry to audition it.
+- **Phrasing, not paragraphs.** A block of text handed to a synthesiser comes
+  back flat, and Chrome truncates it after about fifteen seconds. Scripts are
+  spoken one clause at a time with a real breath between them.
+- **Direction.** The scripts carry performance marks — `||` for a beat, `|||`
+  before a reveal, `~…~` to slow a clause down — so the delivery has shape.
+- **Written for the ear.** The narration is a different text from anything
+  printed on the board: short clauses, no parentheses, and numbers written the
+  way a person says them out loud.
+
+If the browser has no speech synthesis, or you'd rather read, the same scripts
+play as timed captions — the transport has a **Captions only** toggle.
+
 ## The idea
 
 A conspiracy board only works if you can lean into it. Most 3D websites give
@@ -39,7 +82,8 @@ What you can do:
 | **T** | The chronology. Every event opens into smaller events, without limit. |
 | **U** / **I** | Ultraviolet and infrared. The room goes dark and you sweep a beam. |
 | **/** | Full-text search across every board. |
-| **Esc** | Back out one layer at a time. |
+| **Esc** | Back out one layer at a time. Ends a tour. |
+| **Space** *(during a tour)* | Pause and resume. |
 
 Deep links: `?case=zodiac` opens straight onto a board, `?q=low|medium|high`
 pins the quality tier.
@@ -169,6 +213,7 @@ src/
   constants.js            world scale, LOD tiers, quality tiers
   data/
     cases/*.js            six case files: exhibits, links, chronologies
+    tours.js              narration scripts, written to be spoken
     layout.js             size-aware dart throw that pins everything, once
     index.js              board assembly + full-text index
   gfx/
@@ -189,8 +234,11 @@ src/
     CaseCloud.jsx         the opening
     Warehouse.jsx         everything else
     Post.jsx              bloom, SSAO, depth of field, aberration, grain
+    tour.js               the director: beats, camera, lens, pacing
     graphLayout.js        force-directed, cached
-  audio/soundscape.js
+  audio/
+    soundscape.js         the room
+    narrator.js           voice ranking, phrasing, performance marks
   ui/                     intro, HUD, inspector, chronology, search
 ```
 
@@ -211,6 +259,23 @@ type, and is switchable from the HUD. The tiers change dust count, shadow map
 size, and whether SSAO and depth of field run at all. On a machine without
 hardware acceleration everything still runs, slowly — the whole project is
 built so that nothing depends on a frame budget it might not get.
+
+## Two decisions worth explaining
+
+**Camera flights run on the render loop, not on an animation library's ticker.**
+They used to use GSAP. A flight then only advanced when GSAP got a tick — and
+while the texture streamer was building a full-resolution scan, it did not.
+Each new flight killed a predecessor that had never moved, and the camera sat
+still through an entire narrated sequence while the captions and the year
+slider carried on without it. `src/scene/nav.js` now interpolates in the same
+loop that draws the frame, which gives a much stronger invariant: if a frame
+renders, the camera has moved.
+
+**The top level of detail is capped by the quality tier.** A top-tier scan is
+several million pixels of synchronous procedural drawing — affordable on a
+machine that can already render the board, and a multi-second freeze on one
+that can't. The lowest tier stops one level short rather than spending its
+whole budget building a resolution it could never display smoothly.
 
 ## Deviations from a production build
 

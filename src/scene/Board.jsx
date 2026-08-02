@@ -12,7 +12,7 @@ import { useStore } from '../state/store.js'
 import { lod } from '../gfx/lod.js'
 import { nav, flyTo } from './nav.js'
 import { audio } from '../audio/soundscape.js'
-import { DIST } from '../constants.js'
+import { DIST, QUALITY_TIERS } from '../constants.js'
 
 /** One case, assembled. Everything here shares a single coordinate system. */
 export default function Board({ data }) {
@@ -21,6 +21,7 @@ export default function Board({ data }) {
   const mode = useStore((s) => s.mode)
   const focusId = useStore((s) => s.focusId)
   const lens = useStore((s) => s.lens)
+  const quality = useStore((s) => s.quality)
 
   const lampRef = useRef()
   const handLamp = useRef()
@@ -29,13 +30,14 @@ export default function Board({ data }) {
 
   // Warm the thumbnail tier so nothing on the board is ever blank.
   useEffect(() => {
+    lod.setMaxLevel(QUALITY_TIERS[quality].maxLod)
     lod.warm(data.evidence)
     return () => {
       lod.disposeAll()
       audio.detachAll()
       anchors.current.clear()
     }
-  }, [data])
+  }, [data, quality])
 
   const { present, links } = useMemo(() => {
     const present = new Set(

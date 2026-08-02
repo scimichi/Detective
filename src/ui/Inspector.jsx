@@ -11,7 +11,10 @@ export default function Inspector() {
   const data = useStore((s) => (s.caseId ? s.activeCase() : null))
   const lens = useStore((s) => s.lens)
   const camDistance = useStore((s) => s.camDistance)
-  const item = focusId && data ? data.byId.get(focusId) : null
+  const tourActive = useStore((s) => s.tourActive)
+  // While the narrator is talking about a document, it is the transcript —
+  // showing the panel as well collides with the captions and doubles the text.
+  const item = focusId && data && !tourActive ? data.byId.get(focusId) : null
 
   const close = useStore((s) => s.focus)
 

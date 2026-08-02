@@ -1,12 +1,12 @@
-import { useMemo, useRef, useEffect, useState } from 'react'
+import { useMemo, useRef, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import gsap from 'gsap'
 import { renderCaseCard } from '../gfx/caseCard.js'
 import { CASE_LIST } from '../data/index.js'
 import { useStore } from '../state/store.js'
 import { nav, flyTo, resetNav } from './nav.js'
 import { audio } from '../audio/soundscape.js'
+import { startArchiveTour, startCaseTour, stopTour } from './tour.js'
 import Dust from './Dust.jsx'
 
 /**
@@ -25,7 +25,11 @@ export default function CaseCloud() {
   const openCase = useStore((s) => s.openCase)
   const hoverId = useStore((s) => s.hoverId)
   const hover = useStore((s) => s.hover)
-  const [entered, setEntered] = useState(false)
+  const guided = useStore((s) => s.guided)
+  // A ref rather than state: it survives React's development-mode double
+  // invocation of effects, which otherwise fires the entry flight twice and
+  // can leave the camera stranded at its start point with no tween running.
+  const entered = useRef(false)
 
   const cards = useMemo(
     () =>
@@ -41,31 +45,31 @@ export default function CaseCloud() {
     [],
   )
 
-  // The entry flight: out of nowhere, into the field.
+  // The entry flight: out of nowhere, into the field. Driven through flyTo so
+  // there is exactly one authority over the camera target — a bare tween here
+  // could be left racing against one started somewhere else.
   useEffect(() => {
-    if (phase !== 'cloud' || entered) return
-    setEntered(true)
+    if (phase !== 'cloud' || entered.current) return
+    entered.current = true
     resetNav(150)
-    nav.locked = true
-    gsap.to(nav.tgt, {
-      z: 26,
-      duration: 7.5,
-      ease: 'power2.out',
-      onComplete: () => {
-        nav.locked = false
-      },
-    })
-  }, [phase, entered])
+    flyTo(0, 0, 26, 7.5, 'power2.out')
+    // The narration rides the entry flight rather than following it.
+    if (guided) setTimeout(() => startArchiveTour(), 1200)
+  }, [phase, guided])
 
   const onPick = (c, pos) => {
     if (nav.dragged) return
     audio.rustle(0.08)
+    // Whatever the archive narration was saying, this supersedes it.
+    stopTour(true)
+    useStore.setState({ tourActive: false, tourPrompt: false, caption: '' })
     // Dive into the board: aim at the card, then hand over to the corkboard.
-    flyTo(pos[0] * 0.35, pos[1] * 0.35, 3.2, 1.9, 'power3.in').then?.()
+    flyTo(pos[0] * 0.35, pos[1] * 0.35, 3.2, 1.9, 'power3.in')
     setTimeout(() => {
       openCase(c.id)
       resetNav(46)
       flyTo(0, 0, 22, 2.6, 'power2.out')
+      if (guided) setTimeout(() => startCaseTour(c.id), 2200)
     }, 1750)
   }
 
@@ -137,8 +141,11 @@ function CaseCard({ data, position, rotation, hovered, onOver, onOut, onPick }) 
         />
       </mesh>
 
+      {/* A generous, invisible hit area in front of the card. The narrator
+          tells people to click a card; the card should not be a precision
+          target floating in a field of decoys that drift as you reach. */}
       <mesh
-        castShadow
+        position={[0, 0, 0.35]}
         onClick={(e) => {
           e.stopPropagation()
           onPick()
@@ -151,6 +158,17 @@ function CaseCard({ data, position, rotation, hovered, onOver, onOut, onPick }) 
         onPointerOut={() => {
           onOut()
           document.body.style.cursor = ''
+        }}
+      >
+        <planeGeometry args={[5.4, 6.9]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+
+      <mesh
+        castShadow
+        onClick={(e) => {
+          e.stopPropagation()
+          onPick()
         }}
       >
         <planeGeometry args={[4.2, 5.6, 8, 8]} />

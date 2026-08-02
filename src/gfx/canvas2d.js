@@ -92,7 +92,10 @@ export function paperBase(ctx, w, h, stockName, rand, age = 0.5) {
 
 /** Per-pixel fibre and grain. Only worth paying for at close range. */
 export function paperFibres(ctx, w, h, rand, amount = 1) {
-  const n = Math.floor(w * h * 0.0016 * amount)
+  // Density is per-area, but the total is capped: past a point more fibres
+  // add nothing the eye can resolve and everything to the frame that has to
+  // draw them.
+  const n = Math.min(7000, Math.floor(w * h * 0.0016 * amount))
   ctx.save()
   for (let i = 0; i < n; i++) {
     const x = rand() * w

@@ -5,6 +5,9 @@ import { KIND_LABEL } from '../constants.js'
 import { flyTo } from '../scene/nav.js'
 import { audio } from '../audio/soundscape.js'
 import { lod } from '../gfx/lod.js'
+import { startCaseTour } from '../scene/tour.js'
+import { OPENING_MOVE } from '../data/tours.js'
+import { frameFor } from '../scene/EvidenceItem.jsx'
 
 const fade = {
   initial: { opacity: 0, y: -8 },
@@ -37,6 +40,7 @@ export default function HUD() {
   const setAudio = useStore((s) => s.setAudio)
   const quality = useStore((s) => s.quality)
   const setQuality = useStore((s) => s.setQuality)
+  const tourActive = useStore((s) => s.tourActive)
 
   // Stream count comes from the asset manager rather than React state.
   const setStreaming = useStore((s) => s.setStreaming)
@@ -134,6 +138,14 @@ export default function HUD() {
       <AnimatePresence>
         {phase === 'board' && (
           <motion.div className="hud-tr" {...fade} key="hud-tr">
+            {!tourActive && (
+              <button
+                className="tool guide"
+                onClick={() => startCaseTour(data.id)}
+              >
+                ▶ Talk me through this case
+              </button>
+            )}
             <button
               className={`tool ${mode === 'graph' ? 'on' : ''}`}
               onClick={() => {
@@ -183,7 +195,11 @@ export default function HUD() {
 
       <AnimatePresence>
         {phase === 'board' && (
-          <motion.div className="hud-bl" {...fade} key="hud-bl">
+          <motion.div
+            className={`hud-bl ${tourActive ? 'quiet' : ''}`}
+            {...fade}
+            key="hud-bl"
+          >
             <div className="readout">
               Standoff <b>{camDistance.toFixed(2)} m</b>
             </div>
@@ -240,9 +256,71 @@ export default function HUD() {
         )}
       </AnimatePresence>
 
+      <FirstMove />
       <LensTint lens={lens} />
       <Help />
     </>
+  )
+}
+
+/**
+ * The answer to "where do I start?".
+ *
+ * Shown once, to anyone who walked in without the narrator, naming one
+ * specific exhibit worth opening first and the one control that matters.
+ * It gets out of the way the moment they move.
+ */
+function FirstMove() {
+  const phase = useStore((s) => s.phase)
+  const caseId = useStore((s) => s.caseId)
+  const tourActive = useStore((s) => s.tourActive)
+  const hintSeen = useStore((s) => s.hintSeen)
+  const dismissHint = useStore((s) => s.dismissHint)
+  const focus = useStore((s) => s.focus)
+  const data = useStore((s) => (s.caseId ? s.activeCase() : null))
+
+  const show = phase === 'board' && !tourActive && !hintSeen && !!caseId
+  const opening = caseId ? OPENING_MOVE[caseId] : null
+
+  useEffect(() => {
+    if (!show) return
+    // Any deliberate movement means they have found their feet.
+    const go = () => dismissHint()
+    window.addEventListener('wheel', go, { once: true, passive: true })
+    window.addEventListener('pointerdown', go, { once: true })
+    return () => {
+      window.removeEventListener('wheel', go)
+      window.removeEventListener('pointerdown', go)
+    }
+  }, [show, dismissHint])
+
+  return (
+    <AnimatePresence>
+      {show && opening && (
+        <motion.div
+          className="first-move"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          transition={{ duration: 0.8, delay: 1.6, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <div className="fm-line">Scroll to walk toward the board. Click any document to read it.</div>
+          <button
+            className="fm-cta"
+            onClick={() => {
+              const item = data?.byId.get(opening.id)
+              if (!item) return
+              const { dist, shift } = frameFor(item)
+              focus(opening.id)
+              flyTo(item.pos[0] + shift, item.pos[1], dist, 2.2)
+              dismissHint()
+            }}
+          >
+            {opening.line}
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
 

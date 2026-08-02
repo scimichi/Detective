@@ -75,8 +75,16 @@ export const KIND_SIZE = {
   tape: [1.25, 0.8],
 }
 
+/**
+ * `maxLod` is the important one. A top-tier scan is several million pixels of
+ * synchronous procedural drawing — perfectly affordable on a machine that can
+ * already render the board, and a multi-second freeze on one that can't. A
+ * renderer that is struggling should not be spending its budget building a
+ * resolution it will never display smoothly, so the lowest tier simply stops
+ * one level short.
+ */
 export const QUALITY_TIERS = {
-  low: { dust: 24000, shadowMap: 1024, ssao: false, dof: false, godRays: 0.55 },
-  medium: { dust: 90000, shadowMap: 2048, ssao: false, dof: true, godRays: 0.8 },
-  high: { dust: 240000, shadowMap: 4096, ssao: true, dof: true, godRays: 1.0 },
+  low: { dust: 24000, shadowMap: 1024, ssao: false, dof: false, godRays: 0.55, maxLod: 2 },
+  medium: { dust: 90000, shadowMap: 2048, ssao: false, dof: true, godRays: 0.8, maxLod: 3 },
+  high: { dust: 240000, shadowMap: 4096, ssao: true, dof: true, godRays: 1.0, maxLod: 3 },
 }

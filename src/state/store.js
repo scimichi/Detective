@@ -54,6 +54,21 @@ export const useStore = create((set, get) => ({
   flashlight: [0, 0, 0],
   flashlightOn: false,
 
+  // ── the guided tour ──────────────────────────────────────────────────────
+  guided: false,        // the user came in through the narrated door
+  tourActive: false,
+  tourKind: null,       // 'archive' | 'case'
+  tourIndex: 0,
+  tourTotal: 0,
+  tourPaused: false,
+  tourPrompt: false,    // waiting for the viewer to choose a case
+  caption: '',
+  narrationOn: true,
+  voiceURI: null,
+  voiceRate: 0.94,
+  voiceTick: 0,         // bumped when the voice list arrives
+  hintSeen: false,
+
   // ── panels ───────────────────────────────────────────────────────────────
   timelineOpen: false,
   searchOpen: false,
@@ -129,6 +144,8 @@ export const useStore = create((set, get) => ({
   hover: (id) => set({ hoverId: id }),
 
   setLens: (lens) => set((s) => ({ lens: s.lens === lens ? 'none' : lens })),
+  /** Unconditional — the tour sets a lens rather than toggling it. */
+  setLensExact: (lens) => set({ lens }),
   setFlashlight: (p, on) => set({ flashlight: p, flashlightOn: on }),
 
   toggleTimeline: () => set((s) => ({ timelineOpen: !s.timelineOpen })),
@@ -143,6 +160,16 @@ export const useStore = create((set, get) => ({
     })),
   clearFilters: () => set({ filters: [] }),
 
+  setGuided: (guided) => set({ guided }),
+  setTour: (patch) => set(patch),
+  setCaption: (caption) => set({ caption }),
+  setTourPaused: (tourPaused) => set({ tourPaused }),
+  setNarration: (narrationOn) => set({ narrationOn }),
+  setVoiceURI: (voiceURI) => set({ voiceURI }),
+  setVoiceRate: (voiceRate) => set({ voiceRate }),
+  bumpVoices: () => set((s) => ({ voiceTick: s.voiceTick + 1 })),
+  dismissHint: () => set({ hintSeen: true }),
+
   setQuality: (quality) => set({ quality }),
   setAudio: (audioOn) => set({ audioOn }),
   setCamDistance: (camDistance) => set({ camDistance }),
@@ -151,5 +178,7 @@ export const useStore = create((set, get) => ({
 
   ...params,
 }))
+
+if (import.meta.env.DEV && typeof window !== 'undefined') window.__store = useStore
 
 export { CASES, CASE_LIST }

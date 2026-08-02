@@ -25,6 +25,9 @@ class LODManager {
     this.pending = new Set()
     this.running = false
     this.clock = 0
+    this.lastHeavy = 0
+    /** Ceiling imposed by the quality tier; see QUALITY_TIERS.maxLod. */
+    this.maxLevel = LOD.sizes.length - 1
     this.onStreamChange = null
   }
 
@@ -46,8 +49,12 @@ class LODManager {
    * `level`, and schedules the exact level if it is missing. Callers always
    * get something to draw — a blurry 64px stand-in is the point.
    */
+  setMaxLevel(n) {
+    this.maxLevel = Math.max(1, Math.min(LOD.sizes.length - 1, n))
+  }
+
   request(item, level) {
-    const want = Math.max(0, Math.min(LOD.sizes.length - 1, level))
+    const want = Math.max(0, Math.min(this.maxLevel, level))
     let best = null
     let bestLevel = -1
 
@@ -93,26 +100,54 @@ class LODManager {
     this.pump()
   }
 
+  /**
+   * Drains the queue in idle time.
+   *
+   * The rate limit on detail tiers is load-bearing rather than tidy. A
+   * top-level scan is several million pixels of procedural drawing, and it is
+   * synchronous — nothing else on the main thread runs while it happens. Left
+   * unchecked, a run of them saturates the thread for seconds at a time, and
+   * anything that depends on getting a tick (an animation library's ticker,
+   * most obviously) simply stops.
+   *
+   * So: at most one expensive tier per window, and never start one when the
+   * browser has already told us the slice is spent.
+   */
   pump() {
     if (this.running) return
     this.running = true
     idle((deadline) => {
       this.running = false
+      const now = Date.now()
+      const left = () =>
+        typeof deadline?.timeRemaining === 'function' ? deadline.timeRemaining() : 8
       let budget = 1
-      // Thumbnails are cheap enough to batch.
+      let spentBig = now - this.lastHeavy < 240
+
       while (this.queue.length && budget > 0) {
-        const job = this.queue.shift()
+        const job = this.queue[0]
         if (this.cache.has(job.key)) {
+          this.queue.shift()
           this.pending.delete(job.key)
           continue
         }
+        const heavy = job.level >= 2
+        // Leave an expensive job queued rather than starting it in a slice
+        // that has already run out, or hard on the heels of the last one.
+        if (heavy && (spentBig || left() < 4)) break
+
+        this.queue.shift()
         this.generate(job.item, job.level)
         this.pending.delete(job.key)
-        budget -= job.level <= 1 ? 0.2 : 1
-        if (typeof deadline?.timeRemaining === 'function' && deadline.timeRemaining() <= 1) break
+        if (heavy) {
+          this.lastHeavy = Date.now()
+          spentBig = true
+        }
+        budget -= heavy ? 1 : 0.2
+        if (left() <= 1) break
       }
       this.notify()
-      if (this.queue.length) this.pump()
+      if (this.queue.length) setTimeout(() => this.pump(), 60)
     })
   }
 

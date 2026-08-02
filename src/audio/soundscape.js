@@ -19,6 +19,8 @@ class Soundscape {
     this.master = null
     this.sources = new Map() // spatial one-offs, keyed by evidence id
     this.timers = []
+    this.muted = false
+    this.ducked = false
     this.listener = new THREE.Vector3()
   }
 
@@ -41,11 +43,24 @@ class Soundscape {
     this.scheduleAll()
   }
 
+  /**
+   * Pull the room down under the narrator. Rain and a ticking clock are
+   * atmosphere until somebody is talking, at which point they are noise.
+   */
+  setDuck(on) {
+    if (!this.master) return
+    this.ducked = on
+    if (this.muted) return
+    this.master.gain.setTargetAtTime(on ? 0.16 : 0.55, this.ctx.currentTime, 0.25)
+  }
+
   setMuted(muted) {
+    this.muted = muted
     if (!this.master) return
     const now = this.ctx.currentTime
     this.master.gain.cancelScheduledValues(now)
-    this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.55, now, 0.4)
+    const level = muted ? 0.0001 : this.ducked ? 0.16 : 0.55
+    this.master.gain.setTargetAtTime(level, now, 0.4)
   }
 
   makeNoise(seconds) {

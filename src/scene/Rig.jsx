@@ -1,7 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { nav, dolly, pan, spinGraph } from './nav.js'
+import {
+  nav,
+  dolly,
+  pan,
+  spinGraph,
+  updateFlight,
+  updateSweep,
+  stopSweep,
+} from './nav.js'
 import { useStore } from '../state/store.js'
 import { CAMERA, BOARD } from '../constants.js'
 import { audio } from '../audio/soundscape.js'
@@ -48,6 +56,8 @@ export default function Rig() {
     const onMove = (e) => {
       const w = el.clientWidth || 1
       const h = el.clientHeight || 1
+      // A real hand on the mouse always outranks the tour's beam sweep.
+      stopSweep()
       nav.ptr.set((e.clientX / w) * 2 - 1, -((e.clientY / h) * 2 - 1))
 
       if (!drag.current.active) return
@@ -99,11 +109,24 @@ export default function Rig() {
     const dt = Math.min(0.05, delta)
     const t = state.clock.elapsedTime
 
+    // Scripted moves advance here, on the render loop, so a busy main thread
+    // can delay a flight but can never abandon one part-way.
+    //
+    // They advance on *real* elapsed time rather than the clamped step the
+    // simulation uses. A parametric interpolation needs no stability clamp,
+    // and clamping it would let the camera fall behind the narration it is
+    // supposed to be moving with: the voice runs on wall-clock, so the
+    // picture has to as well.
+    const step = Math.min(0.25, delta)
+    updateFlight(delta)
+    updateSweep(delta)
+    nav.handheld += (nav.handheldTarget - nav.handheld) * (1 - Math.exp(-3 * step))
+
     // Critically-damped-ish approach, frame-rate independent. This uses a
     // much looser step cap than the physics does: an exponential approach is
     // stable at any dt, and clamping it hard means that on a slow renderer
     // the camera crawls toward its target in wall-clock time.
-    const k = 1 - Math.exp(-7 * Math.min(0.25, delta))
+    const k = 1 - Math.exp(-7 * step)
     nav.cur.lerp(nav.tgt, k)
     nav.vel.subVectors(nav.cur, nav.prev).divideScalar(Math.max(dt, 1 / 240))
     nav.speed = nav.vel.length()
