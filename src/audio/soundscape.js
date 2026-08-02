@@ -4,9 +4,9 @@ import * as THREE from 'three'
  * Nothing loops.
  *
  * There are no audio files in this project either. The room is synthesised:
- * rain is filtered noise with a wandering band, the clock is a scheduled
- * transient, thunder is a rare envelope on a low-passed burst, and the desk
- * lamp hums at mains frequency from its actual position in space.
+ * rain is built from individual droplets, the clock is a scheduled transient,
+ * thunder is a rare envelope on a low-passed burst, and the desk lamp hums at
+ * mains frequency from its actual position in space.
  *
  * Because every voice is scheduled rather than played, the soundscape never
  * repeats and never reveals a loop point.
@@ -79,45 +79,93 @@ class Soundscape {
 
   // ── Continuous beds ──────────────────────────────────────────────────────
 
+  /**
+   * Rain, built from droplets rather than from noise.
+   *
+   * Filtered white noise is the obvious way to do this and it is wrong: a
+   * wide band of broadband noise is, by definition, hiss. What makes rain
+   * sound like rain is that it is thousands of *separate transients* — each
+   * droplet a short resonant tick with its own pitch and decay — laid over a
+   * quiet low wash. So the buffer is filled with actual droplets.
+   *
+   * The texture is then played back twice at slightly different rates, half a
+   * buffer apart, with slow independent gain drift. The two copies beat
+   * against each other, so the seam never lands in the same place and there is
+   * no loop point to hear.
+   */
   buildRain() {
-    const src = this.ctx.createBufferSource()
-    src.buffer = this.noiseBuffer
-    src.loop = true
+    const sr = this.ctx.sampleRate
+    const seconds = 6
+    const len = Math.floor(sr * seconds)
+    const buf = this.ctx.createBuffer(1, len, sr)
+    const d = buf.getChannelData(0)
 
-    const band = this.ctx.createBiquadFilter()
-    band.type = 'bandpass'
-    band.frequency.value = 1400
-    band.Q.value = 0.55
+    // A quiet low wash: distant rain with no individual drops audible.
+    let lp = 0
+    for (let i = 0; i < len; i++) {
+      lp += (Math.random() * 2 - 1 - lp) * 0.02
+      d[i] = lp * 0.5
+    }
 
-    const shelf = this.ctx.createBiquadFilter()
-    shelf.type = 'highshelf'
-    shelf.frequency.value = 3000
-    shelf.gain.value = -8
+    // Droplets. A decaying sine at a few kilohertz with a noisy attack is a
+    // convincing tick; scatter enough of them and the ear hears rainfall.
+    const drops = Math.floor(seconds * 1200)
+    for (let n = 0; n < drops; n++) {
+      const at = Math.floor(Math.random() * len)
+      // Nearby drops are brighter and louder than distant ones.
+      const near = Math.pow(Math.random(), 2.2)
+      const freq = 900 + Math.random() * 5200 * (0.4 + near)
+      const decay = (0.0012 + Math.random() * 0.011) * (0.5 + near)
+      const amp = (0.006 + Math.random() * 0.05) * near
+      const dur = Math.min(Math.floor(decay * 5 * sr), len - at)
+      const w = (2 * Math.PI * freq) / sr
+      for (let i = 0; i < dur; i++) {
+        const env = Math.exp(-i / (decay * sr))
+        // The first instant is a noise burst — the splash before the ring.
+        const body = i < 24 ? Math.random() * 2 - 1 : Math.sin(w * i)
+        d[at + i] += body * env * amp
+      }
+    }
+
+    // Normalise so the mix level is predictable regardless of drop count.
+    let peak = 0
+    for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(d[i]))
+    if (peak > 0) for (let i = 0; i < len; i++) d[i] /= peak
 
     const gain = this.ctx.createGain()
     gain.gain.value = 0.05
 
-    // Two slow, mutually prime LFOs so squalls never arrive on a beat.
-    for (const [rate, depth] of [
-      [0.037, 380],
-      [0.011, 700],
-    ]) {
-      const lfo = this.ctx.createOscillator()
-      lfo.frequency.value = rate
-      const amt = this.ctx.createGain()
-      amt.gain.value = depth
-      lfo.connect(amt).connect(band.frequency)
-      lfo.start()
-    }
-    const vol = this.ctx.createOscillator()
-    vol.frequency.value = 0.023
-    const volAmt = this.ctx.createGain()
-    volAmt.gain.value = 0.022
-    vol.connect(volAmt).connect(gain.gain)
-    vol.start()
+    // Rain heard from indoors has lost its top end to the glass.
+    const lpf = this.ctx.createBiquadFilter()
+    lpf.type = 'lowpass'
+    lpf.frequency.value = 2600
+    lpf.Q.value = 0.4
+    const hpf = this.ctx.createBiquadFilter()
+    hpf.type = 'highpass'
+    hpf.frequency.value = 180
 
-    src.connect(band).connect(shelf).connect(gain).connect(this.master)
-    src.start()
+    for (const [rate, offset, level] of [
+      [1.0, 0, 1],
+      [0.973, seconds / 2, 0.8],
+    ]) {
+      const src = this.ctx.createBufferSource()
+      src.buffer = buf
+      src.loop = true
+      src.playbackRate.value = rate
+      const g = this.ctx.createGain()
+      g.gain.value = level
+      // Slow drift, so squalls come and go independently on each copy.
+      const lfo = this.ctx.createOscillator()
+      lfo.frequency.value = 0.014 + Math.random() * 0.02
+      const amt = this.ctx.createGain()
+      amt.gain.value = 0.32
+      lfo.connect(amt).connect(g.gain)
+      lfo.start()
+      src.connect(g).connect(hpf)
+      src.start(this.ctx.currentTime, offset)
+    }
+
+    hpf.connect(lpf).connect(gain).connect(this.master)
     this.rainGain = gain
   }
 

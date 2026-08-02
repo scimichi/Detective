@@ -221,11 +221,25 @@ function sleep(ms, gen) {
 
 let wired = false
 
-/** Connects the narrator to the store and to the room's volume. */
+/** Connects the narrator to the store, the room's volume, and any audio the
+ *  build pre-rendered. */
 export function wireNarrator() {
   if (wired) return
   wired = true
   narrator.init()
+  narrator.prime()
+  narrator.onStatus = (mode) => S().setSpeechMode(mode)
+
+  // Pre-rendered narration is optional: the build only produces it when a
+  // text-to-speech key is available, so a missing manifest is the normal case
+  // and must not be treated as an error.
+  const base = import.meta.env.BASE_URL || '/'
+  fetch(`${base}narration/manifest.json`, { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((m) => {
+      if (m?.clips) narrator.setClips(m, `${base}narration/`)
+    })
+    .catch(() => {})
   narrator.onChunk = (text) => S().setCaption(text || '')
   narrator.onDuck = (on) => audio.setDuck(on)
   narrator.onVoices = () => {

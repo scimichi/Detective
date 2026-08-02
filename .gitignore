@@ -4,3 +4,4 @@ dist
 *.local
 .vite
 dist-single
+public/narration

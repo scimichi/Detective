@@ -77,7 +77,37 @@ constraint and the tour is built around it:
   way a person says them out loud.
 
 If the browser has no speech synthesis, or you'd rather read, the same scripts
-play as timed captions — the transport has a **Captions only** toggle.
+play as timed captions — the transport has a **Captions only** toggle. The
+transport always states which tier is actually playing, because every way
+browser speech can fail looks identical from outside: the captions advance and
+nothing comes out of the speakers.
+
+### Recorded narration
+
+A browser voice is free and, on the wrong machine, robotic. For a voice that
+sounds like a person, the narration can be rendered ahead of time by a real
+text-to-speech service and shipped as audio files:
+
+```bash
+ELEVENLABS_API_KEY=…  node scripts/render-narration.mjs   # or FISH_API_KEY
+npm run build
+```
+
+The key never reaches the browser. Rendering happens at build time — on your
+machine or on the CI runner — and the site ships plain `.mp3` files plus a
+manifest. The page authenticates with nothing.
+
+To turn it on for the deployed site, add `ELEVENLABS_API_KEY` (or
+`FISH_API_KEY`) as a repository secret, and optionally `NARRATION_VOICE` as a
+repository variable to choose the voice. The workflow renders on every deploy,
+but the output is cached by content, so only lines whose text has actually
+changed are re-rendered — and re-billed.
+
+The whole archive is **341 phrases, about 16,200 characters**. Clips are keyed
+by a hash of the line rather than by position, so reordering a tour costs
+nothing and two beats that say the same sentence share one file. Any phrase
+without a clip falls back to the browser voice on its own, per phrase, so a
+partial render still works.
 
 ## The idea
 
@@ -256,8 +286,9 @@ src/
     tour.js               the director: beats, camera, lens, pacing
     graphLayout.js        force-directed, cached
   audio/
-    soundscape.js         the room
-    narrator.js           voice ranking, phrasing, performance marks
+    soundscape.js         the room: droplet rain, clock, lamp hum, cassettes
+    narrator.js           three speech tiers, phrasing, performance marks
+    phraseKey.js          stable clip identity, shared with the renderer
   ui/                     intro, HUD, inspector, chronology, search
 ```
 

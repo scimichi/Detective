@@ -19,6 +19,7 @@ export default function Narration() {
   const index = useStore((s) => s.tourIndex)
   const total = useStore((s) => s.tourTotal)
   const prompt = useStore((s) => s.tourPrompt)
+  const speechMode = useStore((s) => s.speechMode)
   const [settings, setSettings] = useState(false)
 
   if (!active) return null
@@ -72,8 +73,16 @@ export default function Narration() {
             ))}
           </span>
 
-          <button onClick={() => setSettings((v) => !v)} className="ghost">
-            Voice
+          <button
+            onClick={() => setSettings((v) => !v)}
+            className={`ghost voice-status ${speechMode}`}
+            title="Choose a voice"
+          >
+            {speechMode === 'clips'
+              ? '◉ Recorded voice'
+              : speechMode === 'speech'
+                ? '◉ Voice'
+                : '○ Captions only'}
           </button>
           <button onClick={() => stopTour()} className="ghost">
             Explore on my own
@@ -89,6 +98,41 @@ export default function Narration() {
 
       {settings && <VoicePanel onClose={() => setSettings(false)} />}
     </>
+  )
+}
+
+/**
+ * Says which of the three tiers is actually playing.
+ *
+ * Every failure mode of browser speech looks the same from the outside — the
+ * captions advance and nothing comes out of the speakers — so the one thing
+ * this panel must not do is leave someone guessing whether it is broken.
+ */
+function SpeechExplainer() {
+  const mode = useStore((s) => s.speechMode)
+  if (mode === 'clips') {
+    return (
+      <p className="vp-note vp-good">
+        Playing recorded narration. This build was made with a text-to-speech
+        key, so the voice is a real one rather than the browser's.
+      </p>
+    )
+  }
+  if (mode === 'speech') {
+    return (
+      <p className="vp-note">
+        Using your browser's own voice — currently{' '}
+        <strong>{narrator.voice?.name || 'the default'}</strong>. Pick a
+        different one below if it sounds mechanical.
+      </p>
+    )
+  }
+  return (
+    <p className="vp-note vp-warn">
+      Nothing is being spoken aloud — the tour is running as captions. Pick a
+      voice below to try again; if none of them make a sound, your browser is
+      refusing to speak and the captions are the whole show.
+    </p>
   )
 }
 
@@ -124,6 +168,8 @@ export function VoicePanel({ onClose }) {
         <span>Narrator</span>
         <button onClick={onClose}>✕</button>
       </div>
+
+      <SpeechExplainer />
 
       {!narrator.supported && (
         <p className="vp-note">

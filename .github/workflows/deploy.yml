@@ -34,6 +34,25 @@ jobs:
 
       - run: npm ci
 
+      # Rendered narration is expensive to produce and never changes unless a
+      # script does, so it is cached by content. A redeploy that touches no
+      # narration re-bills nothing.
+      - name: Restore rendered narration
+        uses: actions/cache@v4
+        with:
+          path: public/narration
+          key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}
+          restore-keys: narration-
+
+      # Optional. With no key configured this step prints a line and exits
+      # successfully, and the site uses the browser's own voice instead.
+      - name: Render narration
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+          NARRATION_VOICE: ${{ vars.NARRATION_VOICE }}
+        run: node scripts/render-narration.mjs
+
       - name: Build
         env:
           # A project page lives under /<repo>/. Reading it from the event

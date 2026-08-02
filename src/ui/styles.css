@@ -1185,3 +1185,29 @@ input[type='range']::-moz-range-thumb {
 .hud-bl.quiet {
   opacity: 0.3;
 }
+
+/* Which speech tier is live. Silence has to be legible. */
+.voice-status.clips {
+  color: #8fd7a8;
+}
+
+.voice-status.speech {
+  color: var(--dim);
+}
+
+.voice-status.captions {
+  color: #d8a24a;
+}
+
+.vp-note.vp-good {
+  color: #8fd7a8;
+}
+
+.vp-note.vp-warn {
+  color: #d8a24a;
+}
+
+.vp-note strong {
+  color: var(--ink);
+  font-weight: 500;
+}

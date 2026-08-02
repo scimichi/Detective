@@ -67,6 +67,7 @@ export const useStore = create((set, get) => ({
   voiceURI: null,
   voiceRate: 0.94,
   voiceTick: 0,         // bumped when the voice list arrives
+  speechMode: 'captions', // 'clips' | 'speech' | 'captions'
   hintSeen: false,
 
   // ── panels ───────────────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ export const useStore = create((set, get) => ({
   setVoiceURI: (voiceURI) => set({ voiceURI }),
   setVoiceRate: (voiceRate) => set({ voiceRate }),
   bumpVoices: () => set((s) => ({ voiceTick: s.voiceTick + 1 })),
+  setSpeechMode: (speechMode) => set({ speechMode }),
   dismissHint: () => set({ hintSeen: true }),
 
   setQuality: (quality) => set({ quality }),

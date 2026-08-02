@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../state/store.js'
 import { audio } from '../audio/soundscape.js'
 import { wireNarrator } from '../scene/tour.js'
+import { narrator } from '../audio/narrator.js'
 
 /**
  * The homepage. One sentence — and then two doors, because the single biggest
@@ -23,6 +24,9 @@ export default function Intro() {
     // output device, and a homepage button that does nothing is worse than a
     // silent room.
     wireNarrator()
+    // Spend this click unlocking the speech engine — browsers will not let a
+    // page speak later without a gesture to point back to.
+    narrator.prime()
     setGuided(guided)
     begin()
     audio.start().catch(() => {})
