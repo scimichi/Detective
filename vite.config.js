@@ -3,6 +3,13 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+
+  // A GitHub project page is served from /<repo>/, not from the domain root.
+  // The deploy workflow passes the repository name in, so this stays correct
+  // whether the site ends up at a project path, a user page, or a custom
+  // domain — nothing here has to be edited when that changes.
+  base: process.env.VITE_BASE || '/',
+
   server: { host: true, port: 5173 },
   build: {
     target: 'es2022',
