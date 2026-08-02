@@ -41,13 +41,14 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
         run: npm run build
 
-      # `enablement` switches Pages on for the repository and points it at
-      # Actions if that has never been done. Without it the very first run of
-      # this workflow fails on a repository that has no Pages site yet, and
-      # someone has to go and flip a switch in the settings by hand.
+      # Requires Pages to have been switched on once, by hand:
+      #   Settings → Pages → Build and deployment → Source: GitHub Actions
+      # The action can create the site itself via `enablement: true`, but the
+      # workflow's own GITHUB_TOKEN is not permitted to create one — it fails
+      # with "Resource not accessible by integration". Creating a Pages site
+      # is an administrative act, and a repository token deliberately cannot
+      # perform it. Every run after that first switch is fully automatic.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
