@@ -39,6 +39,16 @@ export const nav = {
   flash: new THREE.Vector3(),
 }
 
+/**
+ * GSAP smooths over long frames by pretending they were short ones, which is
+ * right for a UI transition and wrong for a camera. On a slow renderer it
+ * stretches a seven-second flight across the archive into minutes, because
+ * the tween advances by a fictional 33 ms per frame instead of by the time
+ * that actually passed. Every tween here is a move through space with a
+ * duration the viewer feels, so give it the real clock.
+ */
+gsap.ticker.lagSmoothing(0)
+
 if (import.meta.env.DEV && typeof window !== 'undefined') window.__nav = nav
 
 export function resetNav(z = CAMERA.startZ) {

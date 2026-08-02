@@ -99,8 +99,11 @@ export default function Rig() {
     const dt = Math.min(0.05, delta)
     const t = state.clock.elapsedTime
 
-    // Critically-damped-ish approach, frame-rate independent.
-    const k = 1 - Math.exp(-7 * dt)
+    // Critically-damped-ish approach, frame-rate independent. This uses a
+    // much looser step cap than the physics does: an exponential approach is
+    // stable at any dt, and clamping it hard means that on a slow renderer
+    // the camera crawls toward its target in wall-clock time.
+    const k = 1 - Math.exp(-7 * Math.min(0.25, delta))
     nav.cur.lerp(nav.tgt, k)
     nav.vel.subVectors(nav.cur, nav.prev).divideScalar(Math.max(dt, 1 / 240))
     nav.speed = nav.vel.length()
