@@ -12,6 +12,24 @@ npm run dev      # http://localhost:5173
 npm run build && npm run preview
 ```
 
+**Live:** https://scimichi.github.io/Detective/ — published by
+`.github/workflows/deploy.yml` on every push. A project page is served from
+`/<repo>/`, so the build's base path is read from the repository name at build
+time rather than hard-coded; renaming or forking the repo needs no edit. If
+Pages has never been switched on for the repository, do it once under
+**Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+There is also a single-file build for anywhere that can only serve one
+document:
+
+```bash
+npx vite build --config vite.artifact.config.js
+node scripts/build-single.mjs detective-board.html
+```
+
+The result has no external references of any kind, so it runs from a `file://`
+path or behind a policy that blocks every other host.
+
 Six cases ship with the archive: the Zodiac, D. B. Cooper, MH370, Titanic,
 Dyatlov Pass, and Whitechapel 1888.
 
