@@ -10,21 +10,21 @@
  *
  * So the narration is rendered here instead, at build time, on a machine that
  * is allowed to hold the key. The site ships plain audio files and a manifest,
- * and the page never authenticates with anything.
+ * and the page authenticates with nothing.
  *
- *   ELEVENLABS_API_KEY=...  node scripts/render-narration.mjs
- *   FISH_API_KEY=...        node scripts/render-narration.mjs
+ *   node scripts/render-narration.mjs            render the whole archive
+ *   node scripts/render-narration.mjs --test     render one line and stop
+ *   node scripts/render-narration.mjs --voices   list the voices on the key
  *
- * Optional:
- *   NARRATION_VOICE   provider voice id
- *   NARRATION_OUT     output directory (default public/narration)
+ * Environment:
+ *   FISH_API_KEY | ELEVENLABS_API_KEY   whichever provider you have
+ *   NARRATION_VOICE                     provider voice / reference id
+ *   FISH_MODEL                          Fish backend model (default s1)
+ *   NARRATION_OUT                       output dir (default public/narration)
  *
  * With no key set it exits quietly and successfully: a build without narration
  * audio is a supported configuration, and the page falls back to the browser
  * voice on its own.
- *
- * Only phrases whose text has changed are re-rendered — the manifest is keyed
- * by a hash of the line, so re-running costs nothing for lines already done.
  */
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -38,12 +38,135 @@ const OUT = resolve(root, process.env.NARRATION_OUT || 'public/narration')
 
 const ELEVEN = process.env.ELEVENLABS_API_KEY
 const FISH = process.env.FISH_API_KEY
+const TEST = process.argv.includes('--test')
+const LIST = process.argv.includes('--voices')
 
 if (!ELEVEN && !FISH) {
   console.log(
-    'narration: no ELEVENLABS_API_KEY or FISH_API_KEY set — skipping.\n' +
+    'narration: no FISH_API_KEY or ELEVENLABS_API_KEY set — skipping.\n' +
       '           the site will use the browser voice instead.',
   )
+  process.exit(0)
+}
+
+// ── Providers ─────────────────────────────────────────────────────────────
+
+const fish = {
+  name: 'fish',
+  voice: process.env.NARRATION_VOICE || '',
+  model: process.env.FISH_MODEL || 's1',
+  async render(text) {
+    const res = await fetch('https://api.fish.audio/v1/tts', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${FISH}`,
+        'content-type': 'application/json',
+        // Selects the synthesis backend. The voice itself is reference_id.
+        model: this.model,
+      },
+      body: JSON.stringify({
+        text,
+        format: 'mp3',
+        mp3_bitrate: 128,
+        normalize: true,
+        latency: 'normal',
+        ...(this.voice ? { reference_id: this.voice } : {}),
+      }),
+    })
+    if (!res.ok) throw new Error(await describe(res))
+    return Buffer.from(await res.arrayBuffer())
+  },
+  async voices() {
+    const res = await fetch(
+      'https://api.fish.audio/model?page_size=30&page_number=1',
+      { headers: { authorization: `Bearer ${FISH}` } },
+    )
+    if (!res.ok) throw new Error(await describe(res))
+    const data = await res.json()
+    return (data.items || data.data || []).map((m) => ({
+      id: m._id || m.id,
+      title: m.title || m.name,
+      languages: (m.languages || []).join(','),
+    }))
+  },
+}
+
+const eleven = {
+  name: 'elevenlabs',
+  voice: process.env.NARRATION_VOICE || 'onwK4e9ZLuTAKqWW03F9',
+  async render(text) {
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${this.voice}?output_format=mp3_44100_128`,
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': ELEVEN, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.45,
+            similarity_boost: 0.75,
+            style: 0.35,
+            use_speaker_boost: true,
+          },
+        }),
+      },
+    )
+    if (!res.ok) throw new Error(await describe(res))
+    return Buffer.from(await res.arrayBuffer())
+  },
+  async voices() {
+    const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': ELEVEN },
+    })
+    if (!res.ok) throw new Error(await describe(res))
+    const data = await res.json()
+    return (data.voices || []).map((v) => ({
+      id: v.voice_id,
+      title: v.name,
+      languages: v.labels?.accent || '',
+    }))
+  },
+}
+
+const provider = FISH ? fish : eleven
+
+/** Turns a failed response into something a CI log can be debugged from. */
+async function describe(res) {
+  let body = ''
+  try {
+    body = (await res.text()).slice(0, 400)
+  } catch {
+    body = '<unreadable>'
+  }
+  return `HTTP ${res.status} ${res.statusText} — ${body}`
+}
+
+/**
+ * An API that answers 200 with a JSON error would otherwise leave 341 files
+ * full of the word "error" on disk, and the failure would only show up as
+ * silence in a browser. Check that what came back is actually audio.
+ */
+function looksLikeAudio(buf) {
+  if (!buf || buf.length < 512) return false
+  // ID3 tag, or an MPEG frame sync.
+  if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) return true
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return true
+  // Some providers return WAV even when asked for mp3; that still plays.
+  if (buf.subarray(0, 4).toString('ascii') === 'RIFF') return true
+  return false
+}
+
+// ── Modes that don't render the whole archive ─────────────────────────────
+
+if (LIST) {
+  console.log(`narration: voices available on this ${provider.name} key\n`)
+  const list = await provider.voices()
+  if (!list.length) console.log('  (none returned)')
+  for (const v of list) {
+    console.log(`  ${v.id}  ${v.title}${v.languages ? `  [${v.languages}]` : ''}`)
+  }
+  console.log('\nSet NARRATION_VOICE to one of the ids above.')
   process.exit(0)
 }
 
@@ -70,9 +193,31 @@ for (const beats of [ARCHIVE_TOUR, ...Object.values(TOURS)]) {
 }
 
 const chars = [...lines.values()].reduce((n, t) => n + t.length, 0)
+console.log(
+  `narration: provider=${provider.name} voice=${provider.voice || '(default)'}` +
+    `${provider.model ? ` model=${provider.model}` : ''}`,
+)
 console.log(`narration: ${lines.size} phrases, ${chars.toLocaleString()} characters`)
 
 await mkdir(OUT, { recursive: true })
+
+// A single line first, to prove the credentials and the request shape before
+// spending the whole archive against them.
+if (TEST) {
+  const [key, text] = [...lines][0]
+  console.log(`narration: test render — "${text}"`)
+  const buf = await provider.render(text)
+  console.log(`narration: ${buf.length} bytes, audio=${looksLikeAudio(buf)}`)
+  console.log(`narration: first bytes ${buf.subarray(0, 8).toString('hex')}`)
+  if (!looksLikeAudio(buf)) {
+    console.error('narration: that is not audio. Body follows:')
+    console.error(buf.subarray(0, 400).toString('utf8'))
+    process.exit(1)
+  }
+  await writeFile(resolve(OUT, `${key}.mp3`), buf)
+  console.log(`narration: wrote ${key}.mp3 — looks good.`)
+  process.exit(0)
+}
 
 // Anything already on disk from a previous run — or restored from the CI
 // cache — is left alone. This is what keeps a redeploy from re-billing the
@@ -80,61 +225,6 @@ await mkdir(OUT, { recursive: true })
 const existing = new Set(
   existsSync(OUT) ? (await readdir(OUT)).filter((f) => f.endsWith('.mp3')) : [],
 )
-
-// ── Providers ─────────────────────────────────────────────────────────────
-
-const provider = ELEVEN
-  ? {
-      name: 'elevenlabs',
-      // A measured, mid-range narrator by default.
-      voice: process.env.NARRATION_VOICE || 'onwK4e9ZLuTAKqWW03F9',
-      async render(text) {
-        const res = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${this.voice}?output_format=mp3_44100_128`,
-          {
-            method: 'POST',
-            headers: {
-              'xi-api-key': ELEVEN,
-              'content-type': 'application/json',
-            },
-            body: JSON.stringify({
-              text,
-              model_id: 'eleven_multilingual_v2',
-              voice_settings: {
-                stability: 0.45,
-                similarity_boost: 0.75,
-                style: 0.35,
-                use_speaker_boost: true,
-              },
-            }),
-          },
-        )
-        if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
-        return Buffer.from(await res.arrayBuffer())
-      },
-    }
-  : {
-      name: 'fish',
-      voice: process.env.NARRATION_VOICE || '',
-      async render(text) {
-        const res = await fetch('https://api.fish.audio/v1/tts', {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${FISH}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            text,
-            format: 'mp3',
-            ...(this.voice ? { reference_id: this.voice } : {}),
-          }),
-        })
-        if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
-        return Buffer.from(await res.arrayBuffer())
-      },
-    }
-
-console.log(`narration: using ${provider.name}`)
 
 // ── Render ────────────────────────────────────────────────────────────────
 
@@ -145,9 +235,9 @@ let failed = 0
 
 for (const [key, text] of lines) {
   const file = `${key}.mp3`
-  clips[key] = file
 
   if (existing.has(file)) {
+    clips[key] = file
     reused++
     continue
   }
@@ -158,7 +248,14 @@ for (const [key, text] of lines) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const buf = await provider.render(text)
+      if (!looksLikeAudio(buf)) {
+        throw new Error(
+          `response was not audio (${buf.length} bytes): ` +
+            buf.subarray(0, 160).toString('utf8'),
+        )
+      }
       await writeFile(resolve(OUT, file), buf)
+      clips[key] = file
       made++
       lastErr = null
       break
@@ -170,12 +267,15 @@ for (const [key, text] of lines) {
 
   if (lastErr) {
     failed++
-    delete clips[key]
-    console.warn(`narration: failed "${text.slice(0, 48)}…" — ${lastErr.message}`)
+    console.warn(`narration: failed "${text.slice(0, 44)}…"\n           ${lastErr.message}`)
     // A provider that is refusing every request should stop the run rather
     // than burn through the whole archive collecting the same error.
-    if (failed > 8 && made === 0) {
-      console.error('narration: provider is failing consistently — giving up.')
+    if (failed >= 3 && made === 0) {
+      console.error(
+        '\nnarration: the first three requests all failed and none succeeded.\n' +
+          '           stopping rather than repeating this 338 more times.\n' +
+          '           run with --test for a single verbose attempt.',
+      )
       break
     }
   }

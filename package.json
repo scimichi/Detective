@@ -3,18 +3,20 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "The Detective Board — an entire website rendered as one continuous WebGL scene.",
+  "description": "The Detective Board \u2014 an entire website rendered as one continuous WebGL scene.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --port 4173"
+    "preview": "vite preview --port 4173",
+    "narration": "node scripts/render-narration.mjs",
+    "narration:test": "node scripts/render-narration.mjs --test",
+    "narration:voices": "node scripts/render-narration.mjs --voices"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.7.0",
     "@react-three/postprocessing": "^3.0.4",
     "framer-motion": "^12.43.0",
-    "gsap": "^3.15.0",
     "postprocessing": "^6.39.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

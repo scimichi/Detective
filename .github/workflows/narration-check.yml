@@ -1,0 +1,48 @@
+name: Check narration key
+
+# Manual only. Validates the text-to-speech credentials, lists the voices the
+# key can reach, and renders exactly one line — a few dozen characters — so a
+# misconfigured key or voice id is found for almost nothing rather than
+# discovered part-way through billing the whole archive.
+on:
+  workflow_dispatch:
+    inputs:
+      voice:
+        description: 'Voice / reference id to test (blank = provider default)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: List available voices
+        env:
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: npm run narration:voices
+
+      - name: Render one line
+        env:
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          NARRATION_VOICE: ${{ github.event.inputs.voice || vars.NARRATION_VOICE }}
+        run: npm run narration:test
+
+      # So the voice can actually be listened to before committing to a
+      # full render.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: narration-sample
+          path: public/narration/*.mp3
+          if-no-files-found: warn

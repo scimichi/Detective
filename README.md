@@ -97,9 +97,13 @@ The key never reaches the browser. Rendering happens at build time — on your
 machine or on the CI runner — and the site ships plain `.mp3` files plus a
 manifest. The page authenticates with nothing.
 
-To turn it on for the deployed site, add `ELEVENLABS_API_KEY` (or
-`FISH_API_KEY`) as a repository secret, and optionally `NARRATION_VOICE` as a
-repository variable to choose the voice. The workflow renders on every deploy,
+To turn it on for the deployed site, add `FISH_API_KEY` (or
+`ELEVENLABS_API_KEY`) as a repository secret, and optionally `NARRATION_VOICE`
+as a repository variable to choose the voice. Before committing to a full
+render, run the **Check narration key** workflow: it lists the voices the key
+can reach and renders a single line, uploading it as an artifact so the voice
+can actually be listened to. `npm run narration:voices` and
+`npm run narration:test` do the same thing locally. The workflow renders on every deploy,
 but the output is cached by content, so only lines whose text has actually
 changed are re-rendered — and re-billed.
 
