@@ -37,12 +37,30 @@ jobs:
       # Rendered narration is expensive to produce and never changes unless a
       # script does, so it is cached by content. A redeploy that touches no
       # narration re-bills nothing.
+      #
+      # The run id in the key is load-bearing, and its absence was a real bug
+      # that billed the whole archive on every single deploy.
+      #
+      # Cache entries on GitHub are immutable: a run that *hits* its primary
+      # key will not save, because there is already something under that name.
+      # The first deploy after the key was configured ran without credit and
+      # stored the only thing it had — an empty manifest, 331 bytes. Every
+      # deploy after that restored those 331 bytes, re-rendered all 341 clips,
+      # then declined to save the result because the key was taken. It would
+      # have done that forever.
+      #
+      # A key that is unique per run can always be written; the restore-keys
+      # below then find the newest previous one by prefix. This is the standard
+      # shape for a cache that accumulates rather than one keyed to an exact
+      # input.
       - name: Restore rendered narration
         uses: actions/cache@v4
         with:
           path: public/narration
-          key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}
-          restore-keys: narration-
+          key: narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-${{ github.run_id }}
+          restore-keys: |
+            narration-${{ hashFiles('src/data/tours.js') }}-${{ vars.NARRATION_VOICE }}-
+            narration-${{ hashFiles('src/data/tours.js') }}-
 
       # Optional. With no key configured this step prints a line and exits
       # successfully, and the site uses the browser's own voice instead.

@@ -324,10 +324,25 @@ const manifest = {
 }
 await writeFile(resolve(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
-console.log(
-  `narration: ${made} rendered, ${reused} reused, ${failed} failed, ` +
-    `${Object.keys(clips).length} in manifest`,
-)
+const summary =
+  `${made} rendered, ${reused} reused, ${failed} failed, ` +
+  `${Object.keys(clips).length} in manifest`
+console.log(`narration: ${summary}`)
+
+// Surfaced on the run's summary page rather than buried four hundred lines
+// into a log nobody scrolls. Reuse is the whole point of the cache, and the
+// first time it silently stopped working the only symptom was a bill.
+if (process.env.GITHUB_ACTIONS) {
+  console.log(`::notice title=Narration::${summary}`)
+  if (made > 20 && reused === 0 && reusable) {
+    console.log(
+      '::warning title=Narration cache missed::' +
+        `Re-rendered the entire archive (${made} clips, ${chars} characters) ` +
+        'and paid for it. Nothing was restored from the cache — check the ' +
+        '"Restore rendered narration" step.',
+    )
+  }
+}
 
 // Deliberately always successful.
 //
