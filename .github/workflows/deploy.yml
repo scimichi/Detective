@@ -41,7 +41,13 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
         run: npm run build
 
+      # `enablement` switches Pages on for the repository and points it at
+      # Actions if that has never been done. Without it the very first run of
+      # this workflow fails on a repository that has no Pages site yet, and
+      # someone has to go and flip a switch in the settings by hand.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -15,9 +15,9 @@ npm run build && npm run preview
 **Live:** https://scimichi.github.io/Detective/ — published by
 `.github/workflows/deploy.yml` on every push. A project page is served from
 `/<repo>/`, so the build's base path is read from the repository name at build
-time rather than hard-coded; renaming or forking the repo needs no edit. If
-Pages has never been switched on for the repository, do it once under
-**Settings → Pages → Build and deployment → Source: GitHub Actions**.
+time rather than hard-coded; renaming or forking the repo needs no edit. The workflow
+switches Pages on itself the first time it runs, so there is nothing to
+configure by hand.
 
 There is also a single-file build for anywhere that can only serve one
 document:
